@@ -1,29 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ChefHat, Info } from 'lucide-react';
-
-// Hook for smooth typing effect
-const useSmoothTyping = (text, speed = 10) => {
-    const [displayedText, setDisplayedText] = useState('');
-
-    useEffect(() => {
-        let i = 0;
-        const timer = setInterval(() => {
-            if (i < text.length) {
-                setDisplayedText(prev => text.slice(0, i + 1));
-                i++;
-            } else {
-                clearInterval(timer);
-            }
-        }, speed);
-
-        return () => clearInterval(timer);
-    }, [text, speed]);
-
-    return displayedText;
-};
+import { Send, ChefHat, Camera, ShoppingCart } from 'lucide-react';
 
 // Component to render message content with optional smooth typing
-const MessageContent = ({ content, isNew, onComplete }) => {
+const MessageContent = ({ content, isNew }) => {
     const [displayedContent, setDisplayedContent] = useState(isNew ? '' : content);
 
     useEffect(() => {
@@ -31,13 +10,6 @@ const MessageContent = ({ content, isNew, onComplete }) => {
             setDisplayedContent(content);
             return;
         }
-
-        // If content grows, we want to animate the new part
-        // But for simplicity in this streaming setup, we often get chunks.
-        // A simple approach: just display what we have. 
-        // The "smoothness" comes from the fact that the server sends chunks.
-        // However, if chunks are large, it looks jerky.
-        // We can implement a local buffer.
 
         let currentIndex = displayedContent.length;
         if (currentIndex >= content.length) return;
@@ -48,18 +20,28 @@ const MessageContent = ({ content, isNew, onComplete }) => {
                 currentIndex++;
             } else {
                 clearInterval(interval);
-                if (onComplete) onComplete();
             }
-        }, 15); // 15ms per character
+        }, 15);
 
         return () => clearInterval(interval);
     }, [content, isNew]);
 
-    return <div className="whitespace-pre-wrap">{displayedContent}</div>;
+    return <div className="whitespace-pre-wrap leading-relaxed text-sm">{displayedContent}</div>;
 };
 
+const SuggestionChip = ({ text, onClick }) => (
+    <button
+        onClick={onClick}
+        className="bg-white text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 hover:shadow-lg transition-all whitespace-nowrap border border-gray-200 shadow-md"
+    >
+        {text}
+    </button>
+);
+
 const ChatInterface = () => {
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState([
+        { role: 'ai', content: '你好！我是你的AI烹饪助手，有什么想做的菜吗？', id: 'init', time: '10:30' }
+    ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef(null);
@@ -72,11 +54,11 @@ const ChatInterface = () => {
         scrollToBottom();
     }, [messages]);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
+    const handleSend = async (text) => {
+        if (!text.trim() || isLoading) return;
 
-        const userMessage = { role: 'user', content: input };
+        const currentTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const userMessage = { role: 'user', content: text, time: currentTime };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
@@ -87,7 +69,8 @@ const ChatInterface = () => {
             content: '',
             id: aiMessageId,
             analysis: null,
-            isStreaming: true
+            isStreaming: true,
+            time: currentTime
         }]);
 
         try {
@@ -128,10 +111,6 @@ const ChatInterface = () => {
                                 setMessages(prev => prev.map(msg =>
                                     msg.id === aiMessageId ? { ...msg, content: msg.content + parsed.data } : msg
                                 ));
-                            } else if (parsed.type === 'error') {
-                                setMessages(prev => prev.map(msg =>
-                                    msg.id === aiMessageId ? { ...msg, content: msg.content + "\n[Error: " + parsed.data + "]" } : msg
-                                ));
                             }
                         } catch (e) {
                             console.error("Error parsing SSE:", e);
@@ -149,96 +128,110 @@ const ChatInterface = () => {
         }
     };
 
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        handleSend(input);
+    };
+
     return (
-        <div className="flex flex-col h-full bg-stone-950 text-stone-100">
+        <div className="flex flex-col h-full bg-transparent">
             {/* Header */}
-            <div className="p-4 border-b border-stone-800 flex items-center gap-2 bg-stone-900/50 backdrop-blur">
-                <ChefHat className="text-amber-500 w-8 h-8" />
+            <div className="px-6 py-4 flex items-center justify-between bg-white border-b border-gray-200">
                 <div>
-                    <h1 className="font-bold text-xl text-amber-50">AI Cooking Assistant</h1>
-                    <p className="text-xs text-stone-400">Powered by GraphRAG</p>
+                    <h1 className="font-bold text-xl bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                        AI Cooking Assistant
+                    </h1>
+                    <p className="text-xs text-gray-500">智能烹饪对话助手</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                        <Camera className="w-5 h-5 text-orange-600" />
+                    </button>
+                    <div className="relative">
+                        <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                            <ShoppingCart className="w-5 h-5 text-orange-600" />
+                        </button>
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-semibold">
+                            3
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-stone-500 opacity-50">
-                        <ChefHat className="w-24 h-24 mb-4 text-stone-600" />
-                        <p className="text-lg">Ask me anything about cooking!</p>
-                    </div>
-                )}
-
+            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
                 {messages.map((msg, idx) => (
-                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-2xl p-4 shadow-md ${msg.role === 'user'
-                                ? 'bg-amber-600 text-white rounded-br-none'
-                                : 'bg-stone-800 text-stone-200 rounded-bl-none border border-stone-700'
+                    <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                        {/* Avatar */}
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai'
+                                ? 'bg-gradient-to-br from-orange-400 to-red-500'
+                                : 'bg-gradient-to-br from-blue-400 to-purple-500'
                             }`}>
-                            {/* Use MessageContent for AI messages to get smooth typing, direct render for user */}
                             {msg.role === 'ai' ? (
-                                <MessageContent content={msg.content} isNew={msg.isStreaming} />
+                                <ChefHat className="w-5 h-5 text-white" />
                             ) : (
-                                <div className="whitespace-pre-wrap">{msg.content}</div>
+                                <span className="text-white text-sm font-medium">你</span>
                             )}
+                        </div>
 
-                            {/* Analysis / Reasoning Display */}
-                            {msg.analysis && (
-                                <div className="mt-4 pt-3 border-t border-stone-700 text-sm">
-                                    <div className="flex items-center gap-2 mb-2 text-amber-500 font-medium">
-                                        <Info className="w-4 h-4" />
-                                        <span>Reasoning Process</span>
-                                    </div>
+                        {/* Message Content */}
+                        <div className={`flex flex-col gap-1 max-w-2xl ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            {/* Bubble */}
+                            <div className={`rounded-2xl px-6 py-4 shadow-md ${msg.role === 'user'
+                                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                                    : 'bg-white text-gray-800'
+                                }`}>
+                                {msg.role === 'ai' ? (
+                                    <MessageContent content={msg.content} isNew={msg.isStreaming} />
+                                ) : (
+                                    <div className="whitespace-pre-wrap leading-relaxed text-sm">{msg.content}</div>
+                                )}
+                            </div>
 
-                                    <div className="grid grid-cols-2 gap-2 mb-3">
-                                        <div className="bg-stone-900/50 p-2 rounded border border-stone-800">
-                                            <span className="text-stone-500 text-xs block">Strategy</span>
-                                            <span className="font-mono text-xs text-stone-300">{msg.analysis.strategy}</span>
-                                        </div>
-                                        <div className="bg-stone-900/50 p-2 rounded border border-stone-800">
-                                            <span className="text-stone-500 text-xs block">Complexity</span>
-                                            <span className="font-mono text-xs text-stone-300">{msg.analysis.complexity?.toFixed(2)}</span>
-                                        </div>
-                                    </div>
-
-                                    {msg.analysis.relevant_docs && msg.analysis.relevant_docs.length > 0 && (
-                                        <div className="space-y-1">
-                                            <p className="text-xs text-stone-500 mb-1">Sources Used:</p>
-                                            {msg.analysis.relevant_docs.map((doc, i) => (
-                                                <div key={i} className="flex items-center justify-between bg-stone-900/30 px-2 py-1 rounded text-xs border border-stone-800/50">
-                                                    <span className="truncate max-w-[150px] text-stone-400">{doc.name}</span>
-                                                    <span className="text-stone-600">{doc.type}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Timestamp */}
+                            <div className={`text-xs text-gray-400 px-2`}>
+                                {msg.time}
+                            </div>
                         </div>
                     </div>
                 ))}
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <div className="p-4 border-t border-stone-800 bg-stone-900/30">
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="How do I make..."
-                        className="flex-1 bg-stone-900 border border-stone-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent placeholder-stone-500 text-stone-200"
-                        disabled={isLoading}
-                    />
-                    <button
-                        type="submit"
-                        disabled={isLoading || !input.trim()}
-                        className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-colors shadow-lg shadow-amber-900/20"
-                    >
-                        <Send className="w-5 h-5" />
+            {/* Suggestions & Input Area */}
+            <div className="px-8 pb-6 pt-4">
+                {/* Suggestions */}
+                <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    <SuggestionChip text="今天晚餐吃什么?" onClick={() => handleSend("今天晚餐吃什么?")} />
+                    <SuggestionChip text="用鸡蛋和番茄能做什么?" onClick={() => handleSend("用鸡蛋和番茄能做什么?")} />
+                    <SuggestionChip text="推荐低卡路里食谱" onClick={() => handleSend("推荐低卡路里食谱")} />
+                    <SuggestionChip text="20分钟快手菜" onClick={() => handleSend("20分钟快手菜")} />
+                </div>
+
+                {/* Input Bar */}
+                <div className="flex gap-3 items-end">
+                    <button className="p-3 rounded-xl hover:bg-white/50 transition-all">
+                        <Camera className="w-5 h-5 text-gray-600" />
                     </button>
-                </form>
+
+                    <form onSubmit={handleSubmit} className="flex-1 flex gap-3">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="询问任何烹饪问题..."
+                            className="flex-1 bg-white px-6 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm text-gray-600 placeholder-gray-400 border border-gray-200 shadow-md"
+                            disabled={isLoading}
+                        />
+                        <button
+                            type="submit"
+                            disabled={isLoading || !input.trim()}
+                            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white p-4 rounded-2xl transition-all shadow-lg hover:shadow-xl"
+                        >
+                            <Send className="w-5 h-5" />
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     );
