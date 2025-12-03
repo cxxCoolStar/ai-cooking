@@ -74,6 +74,34 @@ class StatsResponse(BaseModel):
     vector_indices: int
     total_queries: int
 
+class RecipeListItem(BaseModel):
+    id: str
+    name: str
+    category: str
+    difficulty: int
+    time: int
+    servings: int
+    calories: int
+    description: str
+    tags: List[str]
+    likes: int
+    image: str
+
+class RecipeDetail(BaseModel):
+    id: str
+    name: str
+    category: str
+    difficulty: str
+    time: int
+    servings: int
+    calories: int
+    description: str
+    tags: List[str]
+    likes: int
+    image: str
+    ingredients: List[Dict[str, str]]
+    steps: List[str]
+
 # --- Endpoints ---
 
 @app.get("/api/health")
@@ -182,6 +210,239 @@ async def get_stats():
         vector_indices=milvus_stats.get('row_count', 0),
         total_queries=route_stats.get('total_queries', 0)
     )
+
+@app.get("/api/recipes")
+async def get_recipes(category: str = "all", search: str = ""):
+    """Get recipe list with optional filtering"""
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        # Build Cypher query
+        cypher = """
+        MATCH (r:Recipe)
+        WHERE r.nodeId >= '200000000'
+        """
+        
+        # Add category filter
+        if category != "all":
+            cypher += """
+            MATCH (r)-[:BELONGS_TO_CATEGORY]->(c:Category)
+            WHERE c.name CONTAINS $category
+            """
+        
+        # Add search filter
+        if search:
+            cypher += """
+            AND (r.name CONTAINS $search OR 
+                 any(tag IN split(COALESCE(r.tags, ''), ',') WHERE tag CONTAINS $search))
+            """
+        
+        cypher += """
+        OPTIONAL MATCH (r)-[:BELONGS_TO_CATEGORY]->(cat:Category)
+        RETURN r.nodeId as id,
+               r.name as name,
+               COALESCE(cat.name, r.category, '未分类') as category,
+               COALESCE(r.difficulty, 0) as difficulty,
+               r.prepTime as prepTime,
+               r.cookTime as cookTime,
+               COALESCE(r.servings, 2) as servings,
+               r.description as description,
+               COALESCE(r.tags, '') as tags
+        ORDER BY r.nodeId
+        LIMIT 50
+        """
+        
+        # Execute query
+        with rag_system.data_module.driver.session() as session:
+            params = {}
+            if category != "all":
+                params["category"] = category
+            if search:
+                params["search"] = search
+            
+            result = session.run(cypher, params)
+            recipes = []
+            
+            for record in result:
+                # Parse time safely
+                try:
+                    prep_str = (record["prepTime"] or "0").replace("分钟", "").replace("min", "").strip()
+                    prep_minutes = int(prep_str) if prep_str else 0
+                except (ValueError, AttributeError):
+                    prep_minutes = 0
+                
+                try:
+                    cook_str = (record["cookTime"] or "0").replace("分钟", "").replace("min", "").strip()
+                    cook_minutes = int(cook_str) if cook_str else 0
+                except (ValueError, AttributeError):
+                    cook_minutes = 0
+                
+                total_time = prep_minutes + cook_minutes
+                
+                # Parse tags
+                tags_str = record["tags"] or ""
+                tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else []
+                
+                # Map difficulty safely
+                try:
+                    diff_val = int(record["difficulty"]) if record["difficulty"] else 2
+                except (ValueError, TypeError):
+                    diff_val = 2
+                difficulty_level = max(1, min(5, diff_val))  # Clamp to 1-5
+                
+                # Default emoji (can be extended with name mapping)
+                emoji_map = {
+                    "鸡": "🍗", "肉": "🥩", "蛋": "🍅", "豆腐": "🌶️",
+                    "鱼": "🐟", "虾": "🦐", "菜": "🥬", "饭": "🍚"
+                }
+                emoji = "🍽️"
+                for key, value in emoji_map.items():
+                    if key in record["name"]:
+                        emoji = value
+                        break
+                
+                # Parse servings safely
+                try:
+                    servings = int(record["servings"]) if record["servings"] else 2
+                except (ValueError, TypeError):
+                    servings = 2
+                
+                recipe = {
+                    "id": record["id"],
+                    "name": record["name"],
+                    "category": record["category"],
+                    "difficulty": difficulty_level,
+                    "time": total_time,
+                    "servings": servings,
+                    "calories": 0,  # 暂时为 0
+                    "description": record["description"] or "",
+                    "tags": tags,
+                    "likes": 0,  # 暂时为 0
+                    "image": emoji
+                }
+                recipes.append(recipe)
+        
+        return recipes
+        
+    except Exception as e:
+        logger.error(f"Error fetching recipes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/recipes/{recipe_id}")
+async def get_recipe_detail(recipe_id: str):
+    """Get detailed recipe information"""
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        cypher = """
+        MATCH (r:Recipe {nodeId: $recipe_id})
+        OPTIONAL MATCH (r)-[:BELONGS_TO_CATEGORY]->(cat:Category)
+        OPTIONAL MATCH (r)-[:REQUIRES]->(i:Ingredient)
+        OPTIONAL MATCH (r)-[cs:CONTAINS_STEP]->(s:CookingStep)
+        RETURN r.nodeId as id,
+               r.name as name,
+               COALESCE(cat.name, r.category, '未分类') as category,
+               COALESCE(r.difficulty, 0) as difficulty,
+               r.prepTime as prepTime,
+               r.cookTime as cookTime,
+               COALESCE(r.servings, 2) as servings,
+               r.description as description,
+               COALESCE(r.tags, '') as tags,
+               collect(DISTINCT {name: i.name, amount: COALESCE(i.amount, '')}) as ingredients,
+               collect(DISTINCT {order: COALESCE(cs.stepOrder, s.stepNumber, 999), 
+                                 description: s.description}) as steps
+        """
+        
+        with rag_system.data_module.driver.session() as session:
+            result = session.run(cypher, {"recipe_id": recipe_id})
+            record = result.single()
+            
+            if not record:
+                raise HTTPException(status_code=404, detail="Recipe not found")
+            
+            # Parse time safely
+            try:
+                prep_str = (record["prepTime"] or "0").replace("分钟", "").replace("min", "").strip()
+                prep_minutes = int(prep_str) if prep_str else 0
+            except (ValueError, AttributeError):
+                prep_minutes = 0
+            
+            try:
+                cook_str = (record["cookTime"] or "0").replace("分钟", "").replace("min", "").strip()
+                cook_minutes = int(cook_str) if cook_str else 0
+            except (ValueError, AttributeError):
+                cook_minutes = 0
+            
+            total_time = prep_minutes + cook_minutes
+            
+            # Parse tags
+            tags_str = record["tags"] or ""
+            tags = [t.strip() for t in tags_str.split(",") if t.strip()] if tags_str else []
+            
+            # Map difficulty safely
+            difficulty_map = {0: "简单", 1: "简单", 2: "简单", 3: "中等", 4: "困难", 5: "困难"}
+            try:
+                diff_val = int(record["difficulty"]) if record["difficulty"] else 2
+                difficulty_level = diff_val
+            except (ValueError, TypeError):
+                difficulty_level = 2
+            
+            # Default emoji
+            emoji_map = {
+                "鸡": "🍗", "肉": "🥩", "蛋": "🍅", "豆腐": "🌶️",
+                "鱼": "🐟", "虾": "🦐", "菜": "🥬", "饭": "🍚"
+            }
+            emoji = "🍽️"
+            for key, value in emoji_map.items():
+                if key in record["name"]:
+                    emoji = value
+                    break
+            
+            # Parse servings safely
+            try:
+                servings = int(record["servings"]) if record["servings"] else 2
+            except (ValueError, TypeError):
+                servings = 2
+            
+            # Process ingredients
+            ingredients = []
+            for ing in record["ingredients"]:
+                if ing["name"]:  # Filter out null entries
+                    ingredients.append({
+                        "name": ing["name"],
+                        "amount": ing["amount"] or "适量"
+                    })
+            
+            # Process steps
+            steps_raw = [s for s in record["steps"] if s["description"]]
+            steps_sorted = sorted(steps_raw, key=lambda x: x["order"])
+            steps = [s["description"] for s in steps_sorted]
+            
+            recipe_detail = {
+                "id": record["id"],
+                "name": record["name"],
+                "category": record["category"],
+                "difficulty": difficulty_map.get(difficulty_level, "中等"),
+                "time": total_time,
+                "servings": servings,
+                "calories": 0,  # 暂时为 0
+                "description": record["description"] or "",
+                "tags": tags,
+                "likes": 0,  # 暂时为 0
+                "image": emoji,
+                "ingredients": ingredients,
+                "steps": steps
+            }
+            
+            return recipe_detail
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching recipe detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rebuild")
 async def rebuild_knowledge_base(background_tasks: BackgroundTasks):

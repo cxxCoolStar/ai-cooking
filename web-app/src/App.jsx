@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ChatInterface from './components/ChatInterface';
 import Dashboard from './components/Dashboard';
+import RecipeBrowser from './components/RecipeBrowser';
 import { Home, MessageSquare, BookOpen, Heart, ChefHat } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, active, badge, onClick }) => (
@@ -21,7 +22,13 @@ const SidebarItem = ({ icon: Icon, active, badge, onClick }) => (
 );
 
 function App() {
-    const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'chat'
+    const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'chat' | 'recipes'
+
+    const handleAskAI = (recipeName) => {
+        setActiveView('chat');
+        // TODO: 可以预填充问题到聊天输入框
+        console.log('Ask AI about:', recipeName);
+    };
 
     return (
         <div className="flex h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-orange-50 overflow-hidden">
@@ -45,7 +52,11 @@ function App() {
                         badge="3"
                         onClick={() => setActiveView('chat')}
                     />
-                    <SidebarItem icon={BookOpen} />
+                    <SidebarItem
+                        icon={BookOpen}
+                        active={activeView === 'recipes'}
+                        onClick={() => setActiveView('recipes')}
+                    />
                     <SidebarItem icon={Heart} />
                 </div>
 
@@ -57,12 +68,18 @@ function App() {
             </div>
 
             {/* Main Content - 根据 activeView 切换视图 */}
-            {activeView === 'dashboard' ? (
+            {activeView === 'dashboard' && (
                 <Dashboard onStartChat={() => setActiveView('chat')} />
-            ) : (
+            )}
+
+            {activeView === 'chat' && (
                 <div className="flex-1 flex flex-col">
                     <ChatInterface />
                 </div>
+            )}
+
+            {activeView === 'recipes' && (
+                <RecipeBrowser onAskAI={handleAskAI} />
             )}
         </div>
     );
