@@ -50,6 +50,39 @@ const RecipeBrowser = ({ onAskAI }) => {
         }
     };
 
+    const toggleFavorite = async (recipe, e) => {
+        if (e) e.stopPropagation(); // Prevent opening detail view
+
+        const newFavoriteStatus = !recipe.favorite;
+
+        // Optimistic update for list view
+        setRecipes(recipes.map(r =>
+            r.id === recipe.id ? { ...r, favorite: newFavoriteStatus } : r
+        ));
+
+        // Optimistic update for detail view
+        if (selectedRecipe && selectedRecipe.id === recipe.id) {
+            setSelectedRecipe({ ...selectedRecipe, favorite: newFavoriteStatus });
+        }
+
+        try {
+            await fetch(`http://localhost:8000/api/recipes/${recipe.id}/favorite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ favorite: newFavoriteStatus })
+            });
+        } catch (error) {
+            console.error('Failed to toggle favorite:', error);
+            // Revert on error
+            setRecipes(recipes.map(r =>
+                r.id === recipe.id ? { ...r, favorite: !newFavoriteStatus } : r
+            ));
+            if (selectedRecipe && selectedRecipe.id === recipe.id) {
+                setSelectedRecipe({ ...selectedRecipe, favorite: !newFavoriteStatus });
+            }
+        }
+    };
+
     const getDifficultyColor = (difficulty) => {
         if (difficulty === '简单' || difficulty <= 2)
             return 'bg-green-100 text-green-700';
@@ -96,8 +129,14 @@ const RecipeBrowser = ({ onAskAI }) => {
                                     </div>
                                 </div>
 
-                                <button className="p-4 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-all">
-                                    <Heart className="w-6 h-6" />
+                                <button
+                                    onClick={(e) => toggleFavorite(selectedRecipe, e)}
+                                    className={`p-4 rounded-2xl transition-all ${selectedRecipe.favorite
+                                            ? 'bg-red-100 text-red-600'
+                                            : 'bg-red-50 text-gray-400 hover:bg-red-100 hover:text-red-600'
+                                        }`}
+                                >
+                                    <Heart className={`w-6 h-6 ${selectedRecipe.favorite ? 'fill-current' : ''}`} />
                                 </button>
                             </div>
 
@@ -199,8 +238,8 @@ const RecipeBrowser = ({ onAskAI }) => {
                             key={category.id}
                             onClick={() => setSelectedCategory(category.id)}
                             className={`w-full px-4 py-3 rounded-xl text-left transition-all flex items-center justify-between ${selectedCategory === category.id
-                                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
-                                    : 'hover:bg-gray-100'
+                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
+                                : 'hover:bg-gray-100'
                                 }`}
                         >
                             <span className="flex items-center gap-3">
@@ -277,9 +316,16 @@ const RecipeBrowser = ({ onAskAI }) => {
                                             <span className="text-sm text-gray-600 flex items-center gap-1">
                                                 <Flame className="w-4 h-4 text-orange-500" /> {recipe.calories || '未知'} 卡
                                             </span>
-                                            <span className="flex items-center gap-1 text-sm text-gray-600">
-                                                <Heart className="w-4 h-4 text-red-500 fill-red-500" /> {recipe.likes}
-                                            </span>
+                                            <button
+                                                onClick={(e) => toggleFavorite(recipe, e)}
+                                                className={`flex items-center gap-1 text-sm transition-colors ${recipe.favorite
+                                                        ? 'text-red-500'
+                                                        : 'text-gray-600 hover:text-red-500'
+                                                    }`}
+                                            >
+                                                <Heart className={`w-4 h-4 ${recipe.favorite ? 'fill-current' : ''}`} />
+                                                {recipe.likes}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

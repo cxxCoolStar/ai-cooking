@@ -86,6 +86,7 @@ class RecipeListItem(BaseModel):
     tags: List[str]
     likes: int
     image: str
+    favorite: bool = False
 
 class RecipeDetail(BaseModel):
     id: str
@@ -99,8 +100,12 @@ class RecipeDetail(BaseModel):
     tags: List[str]
     likes: int
     image: str
+    favorite: bool = False
     ingredients: List[Dict[str, str]]
     steps: List[str]
+
+class FavoriteRequest(BaseModel):
+    favorite: bool
 
 # --- Endpoints ---
 
@@ -248,7 +253,8 @@ async def get_recipes(category: str = "all", search: str = ""):
                r.cookTime as cookTime,
                COALESCE(r.servings, 2) as servings,
                r.description as description,
-               COALESCE(r.tags, '') as tags
+               COALESCE(r.tags, '') as tags,
+               COALESCE(r.favorite, false) as favorite
         ORDER BY r.nodeId
         LIMIT 50
         """
@@ -319,7 +325,8 @@ async def get_recipes(category: str = "all", search: str = ""):
                     "description": record["description"] or "",
                     "tags": tags,
                     "likes": 0,  # 暂时为 0
-                    "image": emoji
+                    "image": emoji,
+                    "favorite": record["favorite"]
                 }
                 recipes.append(recipe)
         
@@ -350,6 +357,7 @@ async def get_recipe_detail(recipe_id: str):
                COALESCE(r.servings, 2) as servings,
                r.description as description,
                COALESCE(r.tags, '') as tags,
+               COALESCE(r.favorite, false) as favorite,
                collect(DISTINCT {name: i.name, amount: COALESCE(i.amount, '')}) as ingredients,
                collect(DISTINCT {order: COALESCE(cs.stepOrder, s.stepNumber, 999), 
                                  description: s.description}) as steps
@@ -432,6 +440,7 @@ async def get_recipe_detail(recipe_id: str):
                 "tags": tags,
                 "likes": 0,  # 暂时为 0
                 "image": emoji,
+                "favorite": record["favorite"],
                 "ingredients": ingredients,
                 "steps": steps
             }
@@ -442,6 +451,34 @@ async def get_recipe_detail(recipe_id: str):
         raise
     except Exception as e:
         logger.error(f"Error fetching recipe detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/recipes/{recipe_id}/favorite")
+async def toggle_favorite(recipe_id: str, request: FavoriteRequest):
+    """Toggle favorite status for a recipe"""
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    try:
+        cypher = """
+        MATCH (r:Recipe {nodeId: $recipe_id})
+        SET r.favorite = $favorite
+        RETURN r.nodeId as id, r.favorite as favorite
+        """
+        
+        with rag_system.data_module.driver.session() as session:
+            result = session.run(cypher, {"recipe_id": recipe_id, "favorite": request.favorite})
+            record = result.single()
+            
+            if not record:
+                raise HTTPException(status_code=404, detail="Recipe not found")
+            
+            return {"id": record["id"], "favorite": record["favorite"]}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error toggling favorite: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rebuild")
