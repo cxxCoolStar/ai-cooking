@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ChatInterface from './components/ChatInterface';
-import { Home, MessageSquare, BookOpen, Heart, ChefHat, ShoppingCart } from 'lucide-react';
+import Dashboard from './components/Dashboard';
+import { Home, MessageSquare, BookOpen, Heart, ChefHat } from 'lucide-react';
 
-const SidebarItem = ({ icon: Icon, active, badge }) => (
+const SidebarItem = ({ icon: Icon, active, badge, onClick }) => (
     <div className="relative mb-2">
-        <button className={`w-full p-3 rounded-xl cursor-pointer transition-all flex items-center justify-center ${active ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-            }`}>
+        <button
+            onClick={onClick}
+            className={`w-full p-3 rounded-xl cursor-pointer transition-all flex items-center justify-center ${active ? 'bg-orange-100 text-orange-600' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                }`}
+        >
             <Icon className="w-5 h-5" />
         </button>
         {badge && (
@@ -17,6 +21,8 @@ const SidebarItem = ({ icon: Icon, active, badge }) => (
 );
 
 function App() {
+    const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'chat'
+
     return (
         <div className="flex h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-orange-50 overflow-hidden">
             {/* Icon Sidebar */}
@@ -28,8 +34,17 @@ function App() {
                 </div>
 
                 <div className="flex-1 w-full flex flex-col items-center space-y-1">
-                    <SidebarItem icon={Home} />
-                    <SidebarItem icon={MessageSquare} active badge="3" />
+                    <SidebarItem
+                        icon={Home}
+                        active={activeView === 'dashboard'}
+                        onClick={() => setActiveView('dashboard')}
+                    />
+                    <SidebarItem
+                        icon={MessageSquare}
+                        active={activeView === 'chat'}
+                        badge="3"
+                        onClick={() => setActiveView('chat')}
+                    />
                     <SidebarItem icon={BookOpen} />
                     <SidebarItem icon={Heart} />
                 </div>
@@ -41,10 +56,14 @@ function App() {
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col">
-                <ChatInterface />
-            </div>
+            {/* Main Content - 根据 activeView 切换视图 */}
+            {activeView === 'dashboard' ? (
+                <Dashboard onStartChat={() => setActiveView('chat')} />
+            ) : (
+                <div className="flex-1 flex flex-col">
+                    <ChatInterface />
+                </div>
+            )}
         </div>
     );
 }
