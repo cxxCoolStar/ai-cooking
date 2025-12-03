@@ -2,13 +2,18 @@ import os
 import sys
 import logging
 import asyncio
+import re
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +24,14 @@ from config import DEFAULT_CONFIG
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Security Configuration ---
+SECRET_KEY = "ai-cooking-secret-key-change-me-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 # Global system instance
 rag_system: Optional[AdvancedGraphRAGSystem] = None
@@ -107,7 +120,68 @@ class RecipeDetail(BaseModel):
 class FavoriteRequest(BaseModel):
     favorite: bool
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+# --- Auth Helper Functions ---
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    
+    if token_data.username != "cooking":
+        raise credentials_exception
+        
+    return token_data.username
+
 # --- Endpoints ---
+
+@app.post("/api/login", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    # Hardcoded user check
+    if form_data.username != "cooking" or form_data.password != "0404520":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": form_data.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/api/health")
 async def health_check():
@@ -116,7 +190,7 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, current_user: str = Depends(get_current_user)):
     if not rag_system or not rag_system.system_ready:
         raise HTTPException(status_code=503, detail="System not ready")
 
@@ -200,7 +274,7 @@ async def stream_chat_generator(question: str):
         yield f"data: {json.dumps(error_data)}\n\n"
 
 @app.get("/api/stats", response_model=StatsResponse)
-async def get_stats():
+async def get_stats(current_user: str = Depends(get_current_user)):
     if not rag_system:
         raise HTTPException(status_code=503, detail="System not initialized")
         
@@ -217,7 +291,7 @@ async def get_stats():
     )
 
 @app.get("/api/recipes")
-async def get_recipes(category: str = "all", search: str = "", favorite: bool = False):
+async def get_recipes(category: str = "all", search: str = "", favorite: bool = False, current_user: str = Depends(get_current_user)):
     """Get recipe list with optional filtering"""
     if not rag_system:
         raise HTTPException(status_code=503, detail="System not initialized")
@@ -226,7 +300,7 @@ async def get_recipes(category: str = "all", search: str = "", favorite: bool = 
         # Build Cypher query
         cypher = """
         MATCH (r:Recipe)
-        WHERE r.nodeId >= '200000000'
+        WHERE r.nodeId > '200000000'
         """
         
         # Add category filter
@@ -277,18 +351,21 @@ async def get_recipes(category: str = "all", search: str = "", favorite: bool = 
             recipes = []
             
             for record in result:
-                # Parse time safely
-                try:
-                    prep_str = (record["prepTime"] or "0").replace("分钟", "").replace("min", "").strip()
-                    prep_minutes = int(prep_str) if prep_str else 0
-                except (ValueError, AttributeError):
-                    prep_minutes = 0
-                
-                try:
-                    cook_str = (record["cookTime"] or "0").replace("分钟", "").replace("min", "").strip()
-                    cook_minutes = int(cook_str) if cook_str else 0
-                except (ValueError, AttributeError):
-                    cook_minutes = 0
+                # Parse time safely using regex
+                def parse_minutes(time_str):
+                    if not time_str:
+                        return 0
+                    # Try to find the first number (integer or float)
+                    match = re.search(r'(\d+(\.\d+)?)', str(time_str))
+                    if match:
+                        try:
+                            return int(float(match.group(1)))
+                        except ValueError:
+                            return 0
+                    return 0
+
+                prep_minutes = parse_minutes(record["prepTime"])
+                cook_minutes = parse_minutes(record["cookTime"])
                 
                 total_time = prep_minutes + cook_minutes
                 
@@ -343,17 +420,16 @@ async def get_recipes(category: str = "all", search: str = "", favorite: bool = 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/recipes/{recipe_id}")
-async def get_recipe_detail(recipe_id: str):
+async def get_recipe_detail(recipe_id: str, current_user: str = Depends(get_current_user)):
     """Get detailed recipe information"""
     if not rag_system:
         raise HTTPException(status_code=503, detail="System not initialized")
     
     try:
+        # Optimized Cypher query using pattern comprehension to avoid Cartesian products
         cypher = """
         MATCH (r:Recipe {nodeId: $recipe_id})
         OPTIONAL MATCH (r)-[:BELONGS_TO_CATEGORY]->(cat:Category)
-        OPTIONAL MATCH (r)-[:REQUIRES]->(i:Ingredient)
-        OPTIONAL MATCH (r)-[cs:CONTAINS_STEP]->(s:CookingStep)
         RETURN r.nodeId as id,
                r.name as name,
                COALESCE(cat.name, r.category, '未分类') as category,
@@ -364,9 +440,8 @@ async def get_recipe_detail(recipe_id: str):
                r.description as description,
                COALESCE(r.tags, '') as tags,
                COALESCE(r.favorite, false) as favorite,
-               collect(DISTINCT {name: i.name, amount: COALESCE(i.amount, '')}) as ingredients,
-               collect(DISTINCT {order: COALESCE(cs.stepOrder, s.stepNumber, 999), 
-                                 description: s.description}) as steps
+               [(r)-[:REQUIRES]->(i:Ingredient) | {name: i.name, amount: COALESCE(i.amount, '适量')}] as ingredients,
+               [(r)-[cs:CONTAINS_STEP]->(s:CookingStep) | {order: COALESCE(cs.stepOrder, s.stepNumber, 999), description: s.description}] as steps
         """
         
         with rag_system.data_module.driver.session() as session:
@@ -376,18 +451,21 @@ async def get_recipe_detail(recipe_id: str):
             if not record:
                 raise HTTPException(status_code=404, detail="Recipe not found")
             
-            # Parse time safely
-            try:
-                prep_str = (record["prepTime"] or "0").replace("分钟", "").replace("min", "").strip()
-                prep_minutes = int(prep_str) if prep_str else 0
-            except (ValueError, AttributeError):
-                prep_minutes = 0
-            
-            try:
-                cook_str = (record["cookTime"] or "0").replace("分钟", "").replace("min", "").strip()
-                cook_minutes = int(cook_str) if cook_str else 0
-            except (ValueError, AttributeError):
-                cook_minutes = 0
+            # Parse time safely using regex
+            def parse_minutes(time_str):
+                if not time_str:
+                    return 0
+                # Try to find the first number (integer or float)
+                match = re.search(r'(\d+(\.\d+)?)', str(time_str))
+                if match:
+                    try:
+                        return int(float(match.group(1)))
+                    except ValueError:
+                        return 0
+                return 0
+
+            prep_minutes = parse_minutes(record["prepTime"])
+            cook_minutes = parse_minutes(record["cookTime"])
             
             total_time = prep_minutes + cook_minutes
             
@@ -422,17 +500,20 @@ async def get_recipe_detail(recipe_id: str):
             
             # Process ingredients
             ingredients = []
-            for ing in record["ingredients"]:
-                if ing["name"]:  # Filter out null entries
-                    ingredients.append({
-                        "name": ing["name"],
-                        "amount": ing["amount"] or "适量"
-                    })
+            if record["ingredients"]:
+                for ing in record["ingredients"]:
+                    if ing["name"]:  # Filter out null entries
+                        ingredients.append({
+                            "name": ing["name"],
+                            "amount": ing["amount"]
+                        })
             
             # Process steps
-            steps_raw = [s for s in record["steps"] if s["description"]]
-            steps_sorted = sorted(steps_raw, key=lambda x: x["order"])
-            steps = [s["description"] for s in steps_sorted]
+            steps = []
+            if record["steps"]:
+                steps_raw = [s for s in record["steps"] if s["description"]]
+                steps_sorted = sorted(steps_raw, key=lambda x: x["order"])
+                steps = [s["description"] for s in steps_sorted]
             
             recipe_detail = {
                 "id": record["id"],
@@ -460,7 +541,7 @@ async def get_recipe_detail(recipe_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/recipes/{recipe_id}/favorite")
-async def toggle_favorite(recipe_id: str, request: FavoriteRequest):
+async def toggle_favorite(recipe_id: str, request: FavoriteRequest, current_user: str = Depends(get_current_user)):
     """Toggle favorite status for a recipe"""
     if not rag_system:
         raise HTTPException(status_code=503, detail="System not initialized")

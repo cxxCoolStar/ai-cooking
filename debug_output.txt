@@ -1,0 +1,14 @@
+Found 1 recipes named '菜谱'
+{'fsn': '菜谱 (Recipe)', 'originalLabels': 'Recipe', 'textForEmbedding': '菜谱 菜谱  ', 'conceptType': 'Recipe', 'preferredTerm': '菜谱', 'name': '菜谱', 'ingredientCount': 0, 'stepCount': 0, 'favorite': True, 'nodeId': '200000000'}
+
+Sample recipe names:
+200000000: 菜谱
+201000001: 咖喱炒蟹
+201000023: 微波葱姜黑鳕鱼
+201000040: 水煮鱼
+201000059: 清蒸生蚝
+201000073: 红烧鱼
+201000100: 红烧鱼头
+201000127: 红烧鲤鱼
+201000160: 小龙虾
+201000184: 干煎阿根廷红虾

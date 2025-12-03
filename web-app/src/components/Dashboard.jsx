@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ChefHat, Clock, Star, Camera, ShoppingCart, Heart, BookOpen, MessageCircle, Flame, Sparkles } from 'lucide-react';
+import { ChefHat, Clock, Star, Camera, ShoppingCart, Heart, BookOpen, MessageCircle, Flame, Sparkles, User } from 'lucide-react';
 
-const Dashboard = ({ onStartChat }) => {
+const Dashboard = ({ onStartChat, onRecipeClick }) => {
     const [stats, setStats] = useState({
         total_recipes: 0,
         total_ingredients: 0,
@@ -9,6 +9,7 @@ const Dashboard = ({ onStartChat }) => {
         total_queries: 0
     });
     const [loading, setLoading] = useState(true);
+    const username = 'cooking'; // 当前硬编码用户
 
     // 获取统计数据
     useEffect(() => {
@@ -60,37 +61,38 @@ const Dashboard = ({ onStartChat }) => {
     ];
 
     // Mock 推荐菜谱数据（后续可从后端随机获取）
+    // 更新为真实存在的食谱ID以便跳转测试
     const recipes = [
         {
-            id: 1,
-            name: '宫爆鸡丁',
-            time: '25分钟',
+            id: '201000001',
+            name: '咖喱炒蟹',
+            time: '18分钟',
             image: '🍗',
             calories: 380,
             likes: 1234
         },
         {
-            id: 2,
-            name: '番茄炒蛋',
-            time: '15分钟',
-            image: '🍅',
+            id: '201000023',
+            name: '微波葱姜黑鳕鱼',
+            time: '9分钟',
+            image: '🐟',
             calories: 220,
             likes: 2341
         },
         {
-            id: 3,
-            name: '麻婆豆腐',
+            id: '201000040',
+            name: '水煮鱼',
             time: '30分钟',
             image: '🌶️',
             calories: 290,
             likes: 1876
         },
         {
-            id: 4,
-            name: '糖醋里脊',
-            time: '35分钟',
-            image: '🥩',
-            calories: 450,
+            id: '201000059',
+            name: '清蒸生蚝',
+            time: '11分钟',
+            image: '�',
+            calories: 150,
             likes: 987
         }
     ];
@@ -110,13 +112,12 @@ const Dashboard = ({ onStartChat }) => {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <button className="p-3 rounded-xl shadow-md hover:shadow-lg transition-all hover:bg-gray-50">
-                            <Camera className="w-5 h-5 text-orange-600" />
-                        </button>
-                        <button className="p-3 rounded-xl shadow-md hover:shadow-lg transition-all relative hover:bg-gray-50">
-                            <ShoppingCart className="w-5 h-5 text-orange-600" />
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">3</span>
-                        </button>
+                        <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-xl">
+                            <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                                <User className="w-5 h-5 text-orange-600" />
+                            </div>
+                            <span className="font-medium text-orange-900">{username}</span>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -151,7 +152,7 @@ const Dashboard = ({ onStartChat }) => {
                 {/* Today's Recommendations */}
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold flex items-center gap-2">
+                        <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
                             <Star className="w-6 h-6 text-yellow-500 fill-yellow-500" />
                             今日推荐
                         </h2>
@@ -164,13 +165,14 @@ const Dashboard = ({ onStartChat }) => {
                         {recipes.map((recipe) => (
                             <div
                                 key={recipe.id}
+                                onClick={() => onRecipeClick && onRecipeClick(recipe.id)}
                                 className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 cursor-pointer group"
                             >
                                 <div className="h-48 bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-8xl group-hover:scale-110 transition-transform">
                                     {recipe.image}
                                 </div>
                                 <div className="p-5">
-                                    <h3 className="font-bold text-lg mb-3">{recipe.name}</h3>
+                                    <h3 className="font-bold text-lg mb-3 text-gray-900">{recipe.name}</h3>
                                     <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
                                         <Clock className="w-4 h-4" />
                                         <span>{recipe.time}</span>

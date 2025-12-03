@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Clock, Users, Flame, Star, Heart, ArrowLeft, Tag, MessageCircle } from 'lucide-react';
 
-const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
+const RecipeBrowser = ({ onAskAI, favoritesOnly = false, initialRecipeId = null }) => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedRecipe, setSelectedRecipe] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [recipes, setRecipes] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Load initial recipe if provided
+    useEffect(() => {
+        if (initialRecipeId) {
+            fetchRecipeDetail(initialRecipeId);
+        }
+    }, [initialRecipeId]);
 
     const categories = [
         { id: 'all', name: '全部', icon: '📚' },
@@ -96,7 +103,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
     if (selectedRecipe) {
         return (
             <div className="flex-1 flex flex-col bg-transparent">
-                <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+                <div className="bg-white text-gray-900 border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
                     <button
                         onClick={() => setSelectedRecipe(null)}
                         className="flex items-center gap-2 text-orange-600 hover:text-orange-700"
@@ -115,8 +122,8 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
                                     <div className="flex items-center gap-4 mb-3">
                                         <span className="text-7xl">{selectedRecipe.image}</span>
                                         <div>
-                                            <h1 className="text-4xl font-bold mb-2">{selectedRecipe.name}</h1>
-                                            <p className="text-gray-600">{selectedRecipe.description}</p>
+                                            <h1 className="text-4xl font-bold mb-2 text-gray-900">{selectedRecipe.name}</h1>
+                                            <p className="text-gray-800">{selectedRecipe.description}</p>
                                         </div>
                                     </div>
 
@@ -146,24 +153,24 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
                                 <div className="grid grid-cols-4 gap-6">
                                     <div className="text-center">
                                         <Clock className="w-6 h-6 mx-auto mb-2 text-orange-600" />
-                                        <p className="text-2xl font-bold mb-1">{selectedRecipe.time}分钟</p>
-                                        <p className="text-sm text-gray-500">烹饪时间</p>
+                                        <p className="text-2xl font-bold mb-1 text-gray-900">{selectedRecipe.time}分钟</p>
+                                        <p className="text-sm text-gray-700">烹饪时间</p>
                                     </div>
                                     <div className="text-center">
                                         <Users className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                                        <p className="text-2xl font-bold mb-1">{selectedRecipe.servings}人份</p>
-                                        <p className="text-sm text-gray-500">份量</p>
+                                        <p className="text-2xl font-bold mb-1 text-gray-900">{selectedRecipe.servings}人份</p>
+                                        <p className="text-sm text-gray-700">份量</p>
                                     </div>
                                     <div className="text-center">
                                         <Flame className="w-6 h-6 mx-auto mb-2 text-red-600" />
-                                        <p className="text-2xl font-bold mb-1">{selectedRecipe.calories || '未知'}</p>
-                                        <p className="text-sm text-gray-500">卡路里</p>
+                                        <p className="text-2xl font-bold mb-1 text-gray-900">{selectedRecipe.calories || '未知'}</p>
+                                        <p className="text-sm text-gray-700">卡路里</p>
                                     </div>
                                     <div className="text-center">
                                         <span className={`inline-block px-4 py-2 rounded-xl text-sm font-medium ${getDifficultyColor(selectedRecipe.difficulty)}`}>
                                             {selectedRecipe.difficulty}
                                         </span>
-                                        <p className="text-sm text-gray-500 mt-2">难度</p>
+                                        <p className="text-sm text-gray-700 mt-2">难度</p>
                                     </div>
                                 </div>
                             </div>
@@ -171,15 +178,15 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
 
                         {/* Ingredients */}
                         <div className="bg-white rounded-2xl p-6 shadow-lg mb-6">
-                            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-gray-900">
                                 <span>🥘</span>
                                 食材清单
                             </h2>
                             <div className="grid grid-cols-2 gap-4">
                                 {selectedRecipe.ingredients.map((ingredient, index) => (
                                     <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                                        <span className="font-medium">{ingredient.name}</span>
-                                        <span className="text-gray-600">{ingredient.amount}</span>
+                                        <span className="font-medium text-gray-900">{ingredient.name}</span>
+                                        <span className="text-gray-800">{ingredient.amount}</span>
                                     </div>
                                 ))}
                             </div>
@@ -187,7 +194,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
 
                         {/* Steps */}
                         <div className="bg-white rounded-2xl p-6 shadow-lg">
-                            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-gray-900">
                                 <span>👨‍🍳</span>
                                 制作步骤
                             </h2>
@@ -198,7 +205,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
                                             {index + 1}
                                         </div>
                                         <div className="flex-1 p-4 bg-gray-50 rounded-xl">
-                                            <p>{step}</p>
+                                            <p className="text-gray-900">{step}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -228,7 +235,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
     return (
         <div className="flex-1 flex bg-transparent">
             {/* Category Sidebar */}
-            <div className="w-64 bg-white border-r border-gray-200 p-6 overflow-y-auto">
+            <div className="w-64 bg-white text-gray-900 border-r border-gray-200 p-6 overflow-y-auto">
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                     <Filter className="w-5 h-5 text-orange-600" />
                     菜谱分类
@@ -255,7 +262,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
             {/* Recipe List */}
             <div className="flex-1 overflow-y-auto">
                 {/* Header */}
-                <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+                <div className="bg-white text-gray-900 border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
                     <div className="flex items-center gap-4">
                         <div className="flex-1 relative">
                             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -285,7 +292,7 @@ const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
                                 <div
                                     key={recipe.id}
                                     onClick={() => fetchRecipeDetail(recipe.id)}
-                                    className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 cursor-pointer group"
+                                    className="bg-white text-gray-900 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 cursor-pointer group"
                                 >
                                     <div className="h-48 bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-8xl group-hover:scale-110 transition-transform">
                                         {recipe.image}
