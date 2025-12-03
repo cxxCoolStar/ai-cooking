@@ -57,7 +57,11 @@ function App() {
                         active={activeView === 'recipes'}
                         onClick={() => setActiveView('recipes')}
                     />
-                    <SidebarItem icon={Heart} />
+                    <SidebarItem
+                        icon={Heart}
+                        active={activeView === 'favorites'}
+                        onClick={() => setActiveView('favorites')}
+                    />
                 </div>
 
                 <div className="mt-auto">
@@ -80,6 +84,10 @@ function App() {
 
             {activeView === 'recipes' && (
                 <RecipeBrowser onAskAI={handleAskAI} />
+            )}
+
+            {activeView === 'favorites' && (
+                <RecipeBrowser onAskAI={handleAskAI} favoritesOnly={true} />
             )}
         </div>
     );

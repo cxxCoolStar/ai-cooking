@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Clock, Users, Flame, Star, Heart, ArrowLeft, Tag, MessageCircle } from 'lucide-react';
 
-const RecipeBrowser = ({ onAskAI }) => {
+const RecipeBrowser = ({ onAskAI, favoritesOnly = false }) => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedRecipe, setSelectedRecipe] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -21,7 +21,7 @@ const RecipeBrowser = ({ onAskAI }) => {
     // Fetch recipes when category or search changes
     useEffect(() => {
         fetchRecipes();
-    }, [selectedCategory, searchQuery]);
+    }, [selectedCategory, searchQuery, favoritesOnly]);
 
     const fetchRecipes = async () => {
         setLoading(true);
@@ -29,6 +29,7 @@ const RecipeBrowser = ({ onAskAI }) => {
             const params = new URLSearchParams();
             if (selectedCategory !== 'all') params.append('category', selectedCategory);
             if (searchQuery) params.append('search', searchQuery);
+            if (favoritesOnly) params.append('favorite', 'true');
 
             const res = await fetch(`http://localhost:8000/api/recipes?${params}`);
             const data = await res.json();
@@ -132,8 +133,8 @@ const RecipeBrowser = ({ onAskAI }) => {
                                 <button
                                     onClick={(e) => toggleFavorite(selectedRecipe, e)}
                                     className={`p-4 rounded-2xl transition-all ${selectedRecipe.favorite
-                                            ? 'bg-red-100 text-red-600'
-                                            : 'bg-red-50 text-gray-400 hover:bg-red-100 hover:text-red-600'
+                                        ? 'bg-red-100 text-red-600'
+                                        : 'bg-red-50 text-gray-400 hover:bg-red-100 hover:text-red-600'
                                         }`}
                                 >
                                     <Heart className={`w-6 h-6 ${selectedRecipe.favorite ? 'fill-current' : ''}`} />
@@ -319,8 +320,8 @@ const RecipeBrowser = ({ onAskAI }) => {
                                             <button
                                                 onClick={(e) => toggleFavorite(recipe, e)}
                                                 className={`flex items-center gap-1 text-sm transition-colors ${recipe.favorite
-                                                        ? 'text-red-500'
-                                                        : 'text-gray-600 hover:text-red-500'
+                                                    ? 'text-red-500'
+                                                    : 'text-gray-600 hover:text-red-500'
                                                     }`}
                                             >
                                                 <Heart className={`w-4 h-4 ${recipe.favorite ? 'fill-current' : ''}`} />

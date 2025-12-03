@@ -217,7 +217,7 @@ async def get_stats():
     )
 
 @app.get("/api/recipes")
-async def get_recipes(category: str = "all", search: str = ""):
+async def get_recipes(category: str = "all", search: str = "", favorite: bool = False):
     """Get recipe list with optional filtering"""
     if not rag_system:
         raise HTTPException(status_code=503, detail="System not initialized")
@@ -241,6 +241,12 @@ async def get_recipes(category: str = "all", search: str = ""):
             cypher += """
             AND (r.name CONTAINS $search OR 
                  any(tag IN split(COALESCE(r.tags, ''), ',') WHERE tag CONTAINS $search))
+            """
+        
+        # Add favorite filter
+        if favorite:
+            cypher += """
+            AND r.favorite = true
             """
         
         cypher += """
